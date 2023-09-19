@@ -88,6 +88,7 @@ class Form_pembayaran extends Admin
 		       
 	}
 
+	// mengisi crud pembayaran, secara automatis dengan membaca last ID
     public function copy_to_pembayaran($last_id)
 {
     $form_pembayaran_data = $this->db->get_where('form_pembayaran', ['id' => $last_id])->row();
