@@ -1,0 +1,168 @@
+<?php
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+
+/**
+*| --------------------------------------------------------------------------
+*| Form Pembayaran Controller
+*| --------------------------------------------------------------------------
+*| Form Pembayaran site
+*|
+*/
+class Form_pembayaran extends Admin	
+{
+	
+	public function __construct()
+	{
+		parent::__construct();
+
+		$this->load->model('model_form_pembayaran');
+	}
+
+	/**
+	* Submit Form Pembayarans
+	*
+	*/
+	public function submit()
+	{
+		$this->form_validation->set_rules('nominal_pembayaran', 'Nominal Pembayaran', 'trim|required|max_length[15]');
+		$this->form_validation->set_rules('jenis_pembayaran', 'Jenis Pembayaran', 'trim|required');
+		$this->form_validation->set_rules('tanggal_pembayaran', 'Tanggal Pembayaran', 'trim|required');
+		$this->form_validation->set_rules('nama_mahasiswa', 'Nama Mahasiswa', 'trim|required|max_length[50]');
+		$this->form_validation->set_rules('stambuk', 'Stambuk', 'trim|required|max_length[10]');
+		$this->form_validation->set_rules('metode_pembayaran', 'Metode Pembayaran', 'trim|required');
+		$this->form_validation->set_rules('nama_bank', 'Nama Bank', 'trim|required');
+		$this->form_validation->set_rules('form_pembayaran_bukti_pembayaran_name', 'Bukti Pembayaran', 'trim|required');
+		$this->form_validation->set_rules('captcha', 'Captcha', 'trim|required|callback_valid_captcha');
+		
+		if ($this->form_validation->run()) {
+			$form_pembayaran_bukti_pembayaran_uuid = $this->input->post('form_pembayaran_bukti_pembayaran_uuid');
+			$form_pembayaran_bukti_pembayaran_name = $this->input->post('form_pembayaran_bukti_pembayaran_name');
+		
+			$save_data = [
+				'nominal_pembayaran' => $this->input->post('nominal_pembayaran'),
+				'jenis_pembayaran' => $this->input->post('jenis_pembayaran'),
+				'tanggal_pembayaran' => $this->input->post('tanggal_pembayaran'),
+				'nama_mahasiswa' => $this->input->post('nama_mahasiswa'),
+				'stambuk' => $this->input->post('stambuk'),
+				'metode_pembayaran' => $this->input->post('metode_pembayaran'),
+				'nama_bank' => $this->input->post('nama_bank'),
+				'bukti_pembayaran' => $this->input->post('bukti_pembayaran'),
+			];
+
+			if (!is_dir(FCPATH . '/uploads/form_pembayaran/')) {
+				mkdir(FCPATH . '/uploads/form_pembayaran/');
+			}
+
+			if (!empty($form_pembayaran_bukti_pembayaran_uuid)) {
+				$form_pembayaran_bukti_pembayaran_name_copy = date('YmdHis') . '-' . $form_pembayaran_bukti_pembayaran_name;
+
+				rename(FCPATH . 'uploads/tmp/' . $form_pembayaran_bukti_pembayaran_uuid . '/' . $form_pembayaran_bukti_pembayaran_name, 
+						FCPATH . 'uploads/form_pembayaran/' . $form_pembayaran_bukti_pembayaran_name_copy);
+
+				if (!is_file(FCPATH . '/uploads/form_pembayaran/' . $form_pembayaran_bukti_pembayaran_name_copy)) {
+					echo json_encode([
+						'success' => false,
+						'message' => 'Error uploading file'
+						]);
+					exit;
+				}
+
+				$save_data['bukti_pembayaran'] = $form_pembayaran_bukti_pembayaran_name_copy;
+			}
+		
+			
+			$save_form_pembayaran = $this->model_form_pembayaran->store($save_data);
+			 $last_id = $this->db->insert_id();  // Get the last inserted ID
+            $this->copy_to_pembayaran($last_id); // Copy the data to pembayaran table
+
+			$this->data['success'] = true;
+			$this->data['id'] 	   = $save_form_pembayaran;
+			$this->data['message'] = cclang('your_data_has_been_successfully_submitted');
+		} else {
+			$this->data['success'] = false;
+			$this->data['message'] = validation_errors();
+		}
+         
+		echo json_encode($this->data);
+		       
+	}
+
+    public function copy_to_pembayaran($last_id)
+{
+    $form_pembayaran_data = $this->db->get_where('form_pembayaran', ['id' => $last_id])->row();
+    
+    if ($form_pembayaran_data) {
+        // Image paths
+        $old_path = FCPATH . 'uploads/form_pembayaran/' . $form_pembayaran_data->bukti_pembayaran;
+        $new_path = FCPATH . 'uploads/pembayaran/' . $form_pembayaran_data->bukti_pembayaran;
+
+        // Check if file exists in the old directory
+        if (file_exists($old_path)) {
+            // Move file to the new directory
+            rename($old_path, $new_path);
+        }
+
+        $this->db->query("INSERT INTO pembayaran (nominal_pembayaran, jenis_pembayaran, tanggal_pembayaran, nama_mahasiswa, stambuk, metode_pembayaran, nama_bank, bukti_pembayaran)
+              SELECT nominal_pembayaran, jenis_pembayaran, tanggal_pembayaran, nama_mahasiswa, stambuk, metode_pembayaran, nama_bank, bukti_pembayaran
+              FROM form_pembayaran WHERE id = ?", [$last_id]);
+    }
+}
+
+	/**
+	* Upload Image Form Pembayaran	* 
+	* @return JSON
+	*/
+	public function upload_bukti_pembayaran_file()
+	{
+		$uuid = $this->input->post('qquuid');
+
+		echo $this->upload_file([
+			'uuid' 		 	=> $uuid,
+			'table_name' 	=> 'form_pembayaran',
+			'allowed_types' => 'jpg|png',
+			'max_size' 	 	=> 1000,
+		]);
+	}
+
+	/**
+	* Delete Image Form Pembayaran	* 
+	* @return JSON
+	*/
+	public function delete_bukti_pembayaran_file($uuid)
+	{
+		echo $this->delete_file([
+            'uuid'              => $uuid, 
+            'delete_by'         => $this->input->get('by'), 
+            'field_name'        => 'bukti_pembayaran', 
+            'upload_path_tmp'   => './uploads/tmp/',
+            'table_name'        => 'form_pembayaran',
+            'primary_key'       => 'id',
+            'upload_path'       => 'uploads/form_pembayaran/'
+        ]);
+	}
+
+	/**
+	* Get Image Form Pembayaran	* 
+	* @return JSON
+	*/
+	public function get_bukti_pembayaran_file($id)
+	{
+		$form_pembayaran = $this->model_form_pembayaran->find($id);
+
+		echo $this->get_file([
+            'uuid'              => $id, 
+            'delete_by'         => 'id', 
+            'field_name'        => 'bukti_pembayaran', 
+            'table_name'        => 'form_pembayaran',
+            'primary_key'       => 'id',
+            'upload_path'       => 'uploads/form_pembayaran/',
+            'delete_endpoint'   => ADMIN_NAMESPACE_URL.'/form_pembayaran/delete_bukti_pembayaran_file'
+        ]);
+	}
+
+}
+
+
+/* End of file form_pembayaran.php */
+/* Location: ./application/controllers/administrator/Form Pembayaran.php */
